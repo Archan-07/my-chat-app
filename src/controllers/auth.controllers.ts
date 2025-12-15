@@ -1,0 +1,413 @@
+import { asyncHandler } from "utils/asyncHandler";
+import { Request, Response } from "express";
+import { db } from "db";
+import { users } from "db/schema";
+import { eq, or } from "drizzle-orm";
+import { ApiError } from "utils/ApiError";
+import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
+import bcrypt from "bcrypt";
+import { ApiResponse } from "utils/ApiResponse";
+import jwt, { JwtPayload } from "jsonwebtoken";
+import { env } from "config/env";
+import Logger from "utils/logger";
+import id from "zod/v4/locales/id.js";
+
+interface CustomJwtPayload extends JwtPayload {
+  _id: string;
+}
+
+const generateAccessRefreshTokens = async (userId: string) => {
+  try {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    const accessToken = jwt.sign(
+      {
+        _id: user.id,
+        email: user.email,
+        username: user.username,
+      },
+      env.ACCESS_TOKEN_SECRET!,
+      { expiresIn: env.ACCESS_TOKEN_EXPIRY! }
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        _id: user.id,
+      },
+      env.REFRESH_TOKEN_SECRET,
+      { expiresIn: env.REFRESH_TOKEN_EXPIRY as string }
+    );
+
+    await db
+      .update(users)
+      .set({ refreshToken: refreshToken })
+      .where(eq(users.id, userId));
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(500, "Something went wrong while generating tokens");
+  }
+};
+
+const registerUser = asyncHandler(async (req: Request, res: Response) => {
+  const { email, username, password } = req.body;
+
+  const existingUser = await db
+    .select()
+    .from(users)
+    .where(or(eq(users.email, email), eq(users.username, username)))
+    .limit(1);
+
+  if (existingUser.length > 0) {
+    throw new ApiError(409, "User with email or username already exists");
+  }
+
+  const avatarLocalPath = req.file?.path;
+
+  let avtarUrl = "";
+  let avatarPublicId = "";
+
+  if (avatarLocalPath) {
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    if (avatar) {
+      (avtarUrl = avatar.secure_url), (avatarPublicId = avatar.public_id);
+    }
+  }
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const [newUser] = await db
+    .insert(users)
+    .values({
+      email,
+      username,
+      password: hashedPassword,
+      avatar: avtarUrl,
+      avatarPublicId: avatarLocalPath,
+    })
+    .returning({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      avatar: users.avatar,
+      createdAt: users.createdAt,
+    });
+
+  if (!newUser) {
+    throw new ApiError(500, "Something went wrong while registering the user");
+  }
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, newUser, "User registered successfully"));
+});
+
+const loginUser = asyncHandler(async (req: Request, res: Response) => {
+  const { username, email, password } = req.body;
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(username ? eq(users.username, username) : eq(users.email, email));
+
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid user credentials");
+  }
+
+  const { accessToken, refreshToken } = await generateAccessRefreshTokens(
+    user.id
+  );
+
+  const loggedInUser = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    avatar: user.avatar,
+    isOnline: user.isOnline,
+  };
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "User logged in successfully"
+      )
+    );
+});
+
+const loggedOutUser = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.id) {
+    await db
+      .update(users)
+      .set({ refreshToken: null })
+      .where(eq(users.id, req.user.id));
+  }
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User logged out successfully"));
+});
+
+const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
+  const incomingRefreshToken =
+    req.cookies?.refreshToken || req.body?.refreshToken;
+  if (!incomingRefreshToken) {
+    throw new ApiError(401, "Refresh token required");
+  }
+  try {
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      env.REFRESH_TOKEN_SECRET
+    ) as CustomJwtPayload;
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, decodedToken._id))
+      .limit(1);
+
+    if (!user) {
+      throw new ApiError(401, "Invalid refresh token");
+    }
+
+    if (incomingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(401, "Invalid refresh token");
+    }
+
+    const options = { httpOnly: true, secure: true };
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await generateAccessRefreshTokens(user.id);
+
+    return res
+      .status(200)
+      .cookie("AccessToken", accessToken, options)
+      .cookie("RefreshToken", newRefreshToken, options)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "Access Token refresh successfully"
+        )
+      );
+  } catch (error) {
+    Logger.error(`Error refreshing access token: ${(error as Error).message}`);
+    throw new ApiError(
+      500,
+      "Something went wrong while refreshing access token"
+    );
+  }
+});
+
+const changePassword = asyncHandler(async (req: Request, res: Response) => {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.user!.id;
+
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Current password is incorrect");
+  }
+  const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+  await db
+    .update(users)
+    .set({ password: hashedNewPassword })
+    .where(eq(users.id, userId));
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Password changed successfully"));
+});
+const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      avatar: users.avatar,
+      createdAt: users.createdAt,
+      refreshToken: users.refreshToken,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Current user fetched successfully"));
+});
+const updateAccountDetails = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, username } = req.body;
+    const userId = req.user!.id;
+
+    if (!userId) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    if (!email && !username) {
+      throw new ApiError(400, "No details provided to update");
+    }
+
+    // Check if email is already in use by another user
+    if (email) {
+      const [existingUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (existingUser && existingUser.id !== userId) {
+        throw new ApiError(409, "Email is already in use");
+      }
+    }
+
+    // Check if username is already in use by another user
+    if (username) {
+      const [existingUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
+
+      if (existingUser && existingUser.id !== userId) {
+        throw new ApiError(409, "Username is already in use");
+      }
+    }
+
+    const updateData: { email?: string; username?: string } = {};
+    if (email) updateData.email = email;
+    if (username) updateData.username = username;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId!))
+      .returning({
+        id: users.id,
+        username: users.username,
+        email: users.email,
+        avatar: users.avatar,
+      });
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          updatedUser,
+          "Account details updated successfully"
+        )
+      );
+  }
+);
+const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
+  const avatarLocalPath = req.file?.path;
+  console.log(avatarLocalPath);
+
+  const userId = req.user?.id;
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath!);
+  if (!avatar?.secure_url) {
+    throw new ApiError(500, "Error uploading avatar");
+  }
+
+  const oldPublicId = req.user?.avatarPublicId;
+  if (oldPublicId) {
+    // Don't await this, let it happen in background for speed
+    deleteFromCloudinary(oldPublicId);
+  }
+
+  // 3. Update DB
+  const [updatedUser] = await db
+    .update(users)
+    .set({
+      avatar: avatar.secure_url,
+      avatarPublicId: avatar.public_id,
+    })
+    .where(eq(users.id, userId!))
+    .returning({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      avatar: users.avatar,
+    });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedUser, "Avatar updated successfully"));
+});
+const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const avatarPublicId = req.user?.avatarPublicId;
+  if (avatarPublicId) {
+    await deleteFromCloudinary(avatarPublicId);
+  }
+  await db.delete(users).where(eq(users.id, userId));
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User deleted successfully"));
+});
+export {
+  registerUser,
+  loginUser,
+  loggedOutUser,
+  refreshAccessToken,
+  changePassword,
+  updateAccountDetails,
+  updateAvatar,
+  getCurrentUser,
+  deleteUserAccount,
+};
