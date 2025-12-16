@@ -4,7 +4,6 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 
-
 const app = express();
 
 const limiter = rateLimit({
@@ -38,7 +37,9 @@ app.use(express.static("public"));
 app.use(cookieParser());
 
 import authRouter from "./routes/auth.routes";
+import roomRouter from "./routes/room.routes";
 
 app.use("/api/v1/users", authRouter);
+app.use("/api/v1/rooms", roomRouter);
 
 export { app };

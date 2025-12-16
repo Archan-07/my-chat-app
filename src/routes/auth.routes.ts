@@ -8,7 +8,7 @@ import {
   registerUser,
   updateAccountDetails,
   updateAvatar,
-} from "controllers/auth.controller";
+} from "controllers/auth.controllers";
 import { Router } from "express";
 import { verifyJWT } from "middlewares/auth.middleware";
 import { upload } from "middlewares/multer.middleware";

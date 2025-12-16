@@ -30,6 +30,8 @@ const rooms = pgTable("rooms", {
   name: varchar("name", { length: 50 }).notNull(),
   description: varchar("description", { length: 255 }),
   isGroup: boolean("is_group").default(true),
+  roomAvatar: varchar("roomAvatar", { length: 255 }), // URL to Cloudinary
+  avatarPublicId: varchar("avatarPublicId", { length: 255 }),
   adminId: uuid("admin_id")
     .notNull()
     .references(() => users.id),

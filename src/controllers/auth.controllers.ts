@@ -233,7 +233,7 @@ const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
 
 const changePassword = asyncHandler(async (req: Request, res: Response) => {
   const { oldPassword, newPassword } = req.body;
-  const userId = req.user!.id;
+  const userId = req.user?.id;
 
   if (!userId) throw new ApiError(401, "Unauthorized");
 
@@ -261,7 +261,7 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, null, "Password changed successfully"));
 });
 const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const userId = req.user?.id;
   if (!userId) throw new ApiError(401, "Unauthorized");
 
   const [user] = await db
@@ -284,7 +284,7 @@ const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
 const updateAccountDetails = asyncHandler(
   async (req: Request, res: Response) => {
     const { email, username } = req.body;
-    const userId = req.user!.id;
+    const userId = req.user?.id;
 
     if (!userId) {
       throw new ApiError(401, "Unauthorized");
@@ -348,8 +348,6 @@ const updateAccountDetails = asyncHandler(
 );
 const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
   const avatarLocalPath = req.file?.path;
-  console.log(avatarLocalPath);
-
   const userId = req.user?.id;
 
   const avatar = await uploadOnCloudinary(avatarLocalPath!);
@@ -383,7 +381,9 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, updatedUser, "Avatar updated successfully"));
 });
 const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+  const userId = req.user?.id;
+  if (!userId) throw new ApiError(401, "Unauthorized");
+
   const avatarPublicId = req.user?.avatarPublicId;
   if (avatarPublicId) {
     await deleteFromCloudinary(avatarPublicId);
