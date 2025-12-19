@@ -1,5 +1,6 @@
 import {
   addParticipants,
+  createOrGetOneOnOneChat,
   createRoom,
   deleteRoom,
   getMyRooms,
@@ -51,5 +52,6 @@ router
   .route("/remove-participants/:roomId")
   .post(verifyJWT, upload.none(), removeParticipants);
 router.route("/leave/:roomId").post(leaveRoom);
+router.route("/dm/:receiverId").post(verifyJWT, createOrGetOneOnOneChat);
 
 export default router;

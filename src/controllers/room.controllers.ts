@@ -4,7 +4,7 @@ import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { db } from "../db";
 import { rooms, participants, users } from "../db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
 import { log } from "node:console";
 
@@ -260,9 +260,8 @@ const removeParticipants = asyncHandler(async (req: Request, res: Response) => {
       )
     )
     .limit(1);
-
-  if ((existingUser.length = 0)) {
-    throw new ApiError(400, "User not found");
+  if (existingUser.length === 0) {
+    throw new ApiError(404, "User not found in this room");
   }
 
   await db
@@ -273,7 +272,9 @@ const removeParticipants = asyncHandler(async (req: Request, res: Response) => {
         eq(participants.userId, userToRemove)
       )
     );
-  return res.status(200).json(new ApiResponse(200, {}, "User removed from room"));
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "User removed from room"));
 });
 
 const leaveRoom = asyncHandler(async (req: Request, res: Response) => {
@@ -291,6 +292,58 @@ const leaveRoom = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, {}, "Left room successfully"));
 });
 
+const createOrGetOneOnOneChat = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { receiverId } = req.params;
+    const senderId = req.user?.id;
+
+    if (!receiverId) throw new ApiError(400, "Receiver ID is required");
+    if (senderId === receiverId)
+      throw new ApiError(400, "Cannot chat with yourself");
+
+    const existingRoom = await db.execute(sql`
+    SELECT r.* from rooms r
+    JOIN participants p1 ON r.id = p1.room_id
+    JOIN participants p2 ON r.id = p2.room_id
+    AND r.is_Group = false
+    AND p1.user_id = ${senderId}
+    AND p2.user_id = ${receiverId}
+    LIMIT 1;
+    `);
+
+    if (existingRoom.rows.length > 0) {
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            existingRoom.rows[0],
+            "Chat retrieved successfully"
+          )
+        );
+    }
+
+    const newRoom = await db.transaction(async (tx) => {
+      const [room] = await tx
+        .insert(rooms)
+        .values({
+          name: "one-to-one",
+          adminId: senderId!,
+          isGroup: false,
+        })
+        .returning();
+
+      await tx.insert(participants).values([
+        { roomId: room.id, userId: senderId!, role: "ADMIN" },
+        { roomId: room.id, userId: receiverId!, role: "MEMBER" },
+      ]);
+    });
+    return res
+      .status(201)
+      .json(new ApiResponse(201, newRoom, "1-on-1 Chat created successfully"));
+  }
+);
+
 export {
   createRoom,
   getMyRooms,
@@ -301,4 +354,5 @@ export {
   addParticipants,
   removeParticipants,
   leaveRoom,
+  createOrGetOneOnOneChat,
 };

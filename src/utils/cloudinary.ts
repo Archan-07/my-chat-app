@@ -24,22 +24,22 @@ const uploadOnCloudinary = async (
     });
   } catch (error: any) {
     Logger.error(`Cloudinary upload failed: ${error.message}`);
+    // Do NOT return null here yet, let finally run
   } finally {
+    // 🛡️ SAFELY DELETE LOCAL FILE
     try {
       if (fs.existsSync(localFilePath)) {
         fs.unlinkSync(localFilePath);
       }
     } catch (unlinkError: any) {
+      // Just log the warning. Do not throw or retry.
       Logger.warn(
         `Failed to delete local file ${localFilePath}: ${unlinkError.message}`
       );
-      fs.unlinkSync(localFilePath);
     }
   }
-
   return response;
 };
-
 const deleteFromCloudinary = async (publicId: string): Promise<any> => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);

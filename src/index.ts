@@ -5,40 +5,41 @@ import { sql } from "drizzle-orm";
 import cluster from "node:cluster";
 import os from "node:os";
 import Logger from "./utils/logger";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { initializeSocketIO } from "./socket";
 
 const PORT = env.PORT;
-const numCPUs = os.cpus().length;
+// const numCPUs = os.cpus().length;
 
-if (cluster.isPrimary) {
-  Logger.info(`Primary ${process.pid} is running`);
+const startServer = async () => {
+  try {
+    // 1. Check Database
+    await db.execute(sql`SELECT 1`);
+    Logger.info("🐘 PostgreSQL Connected successfully via Drizzle");
 
-  // Fork workers based on CPU cores
-  for (let i = 0; i < numCPUs; i++) {
-    cluster.fork();
+    // 2. Create HTTP Server
+    const httpServer = createServer(app);
+
+    // 3. Initialize Socket.io
+    const io = new Server(httpServer, {
+      cors: {
+        origin: process.env.CORS_ORIGIN || "*",
+        credentials: true,
+      },
+    });
+
+    initializeSocketIO(io);
+    app.set("io", io);
+
+    // 4. Listen
+    httpServer.listen(PORT, () => {
+      Logger.info(`🚀 Server is running on Port: ${PORT}`);
+    });
+  } catch (err) {
+    Logger.error(`Failed to start server: ${err}`);
+    process.exit(1);
   }
+};
 
-  cluster.on("exit", (worker, code, signal) => {
-    Logger.warn(`Worker ${worker.process.pid} died. Forking a new one...`);
-    cluster.fork();
-  });
-} else {
-  // WORKER PROCESS
-  const startServer = async () => {
-    try {
-      // 1. Test Database Connection (Optional but recommended)
-      // We run a simple query to ensure Postgres is alive
-      await db.execute(sql`SELECT 1`);
-      Logger.info("🐘 PostgreSQL Connected successfully via Drizzle");
-
-      // 2. Start Express Server
-      app.listen(PORT, () => {
-        Logger.info(`Worker ${process.pid} listening on Port: ${PORT}`);
-      });
-    } catch (err) {
-      Logger.error(`Worker ${process.pid} failed to start: ${err}`);
-      process.exit(1);
-    }
-  };
-
-  startServer();
-}
+startServer();

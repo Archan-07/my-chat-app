@@ -21,6 +21,7 @@ const users = pgTable("users", {
   avatarPublicId: varchar("avatarPublicId", { length: 255 }),
   isOnline: boolean("is_online").default(false),
   refreshToken: text("refreshToken"),
+  lastSeen: timestamp("last_seen"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -67,6 +68,8 @@ const messages = pgTable("messages", {
   roomId: uuid("room_id")
     .notNull()
     .references(() => rooms.id),
+  attachmentUrl: varchar("attachment_url", { length: 255 }),
+  attachmentPublicId: varchar("attachment_public_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

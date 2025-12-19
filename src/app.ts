@@ -38,8 +38,10 @@ app.use(cookieParser());
 
 import authRouter from "./routes/auth.routes";
 import roomRouter from "./routes/room.routes";
+import messageRouter from "./routes/message.route";
 
 app.use("/api/v1/users", authRouter);
 app.use("/api/v1/rooms", roomRouter);
+app.use("/api/v1/messages", messageRouter);
 
 export { app };
