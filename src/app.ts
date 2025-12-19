@@ -3,6 +3,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./config/swagger";
 
 const app = express();
 
@@ -39,6 +41,10 @@ app.use(cookieParser());
 import authRouter from "./routes/auth.routes";
 import roomRouter from "./routes/room.routes";
 import messageRouter from "./routes/message.route";
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// ... inside startServer or near app.listen ...
+console.log("Swagger APIs:", swaggerSpec);
 
 app.use("/api/v1/users", authRouter);
 app.use("/api/v1/rooms", roomRouter);

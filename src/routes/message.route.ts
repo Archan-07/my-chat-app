@@ -3,6 +3,7 @@ import { verifyJWT } from "../middlewares/auth.middleware";
 import {
   deleteMessage,
   getRoomMessages,
+  markMessagesAsRead,
   sendMessage,
 } from "controllers/message.controllers";
 import { sendMessageSchema } from "validators/message.validator";
@@ -23,4 +24,5 @@ router
   );
 
 router.route("/delete-message/:messageId/:roomId").delete(deleteMessage);
+router.route("/mark-read/:roomId").post(verifyJWT, markMessagesAsRead);
 export default router;

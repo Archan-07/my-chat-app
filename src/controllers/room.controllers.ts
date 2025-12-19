@@ -4,7 +4,7 @@ import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { db } from "../db";
 import { rooms, participants, users } from "../db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, ilike } from "drizzle-orm";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
 import { log } from "node:console";
 
@@ -344,6 +344,37 @@ const createOrGetOneOnOneChat = asyncHandler(
   }
 );
 
+
+const searchRooms = asyncHandler(async (req: Request, res: Response) => {
+  const { query } = req.query;
+
+  if (!query || typeof query !== "string") {
+    throw new ApiError(400, "Search query is required");
+  }
+  
+  const foundRooms = await db
+    .select({
+        id: rooms.id,
+        name: rooms.name,
+        description: rooms.description,
+        avatar: rooms.roomAvatar,
+        isGroup: rooms.isGroup
+    })
+    .from(rooms)
+    .where(
+      and(
+        eq(rooms.isGroup, true), // Usually we only search Groups, not DMs
+        ilike(rooms.name, `%${query}%`)
+      )
+    )
+    .limit(20);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, foundRooms, "Rooms found"));
+});
+
+
 export {
   createRoom,
   getMyRooms,
@@ -355,4 +386,5 @@ export {
   removeParticipants,
   leaveRoom,
   createOrGetOneOnOneChat,
+  searchRooms,
 };

@@ -2,7 +2,7 @@ import { asyncHandler } from "utils/asyncHandler";
 import { Request, Response } from "express";
 import { db } from "db";
 import { users } from "db/schema";
-import { eq, or } from "drizzle-orm";
+import { and, eq, ilike, ne, or } from "drizzle-orm";
 import { ApiError } from "utils/ApiError";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
 import bcrypt from "bcrypt";
@@ -400,6 +400,37 @@ const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
     .clearCookie("refreshToken", options)
     .json(new ApiResponse(200, {}, "User deleted successfully"));
 });
+
+const searchUser = asyncHandler(async (req: Request, res: Response) => {
+  const { query } = req.query;
+  const currentUserId = req.user?.id!;
+
+  if (!query || typeof query !== "string") {
+    throw new ApiError(400, "Search query is required");
+  }
+
+  const foundUsers = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      avatar: users.avatar,
+      isOnline: users.isOnline,
+    })
+    .from(users)
+    .where(
+      and(
+        ne(users.id, currentUserId),
+        or(
+          ilike(users.username, `%${query}%`),
+          ilike(users.email, `%${query}%`)
+        )
+      )
+    )
+    .limit(10);
+
+  return res.status(200).json(new ApiResponse(200, foundUsers, "Users found"));
+});
 export {
   registerUser,
   loginUser,
@@ -410,4 +441,5 @@ export {
   updateAvatar,
   getCurrentUser,
   deleteUserAccount,
+  searchUser,
 };

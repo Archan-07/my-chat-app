@@ -2,10 +2,11 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { db } from "../db";
-import { messages, rooms, users } from "../db/schema";
-import { eq, desc, asc, and } from "drizzle-orm";
+import { messages, readReceipts, rooms, users } from "../db/schema";
+import { eq, desc, asc, and, sql, isNotNull, ne, isNull } from "drizzle-orm";
 import { ApiError } from "utils/ApiError";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
+import { getLinkPreview } from "utils/linkPreview";
 
 const getRoomMessages = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
@@ -60,6 +61,11 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
+  let urlPreview = null;
+  if (content) {
+    urlPreview = await getLinkPreview(content);
+  }
+
   const [savedMessage] = await db
     .insert(messages)
     .values({
@@ -68,6 +74,7 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
       senderId: userId,
       attachmentUrl,
       attachmentPublicId,
+      urlPreview: urlPreview,
     })
     .returning();
 
@@ -92,6 +99,7 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     .status(201)
     .json(new ApiResponse(201, socketPayload, "Message sent"));
 });
+
 const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
   const { messageId, roomId } = req.params;
   const userId = req.user?.id!;
@@ -135,4 +143,59 @@ const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
   return res.status(200).json(new ApiResponse(200, {}, "Message deleted"));
 });
 
-export { getRoomMessages, sendMessage, deleteMessage };
+const markMessagesAsRead = asyncHandler(async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = req.user!.id;
+
+  // 1. Find messages in the room NOT sent by this user
+  // 2. That do NOT already have a read receipt for this user
+  const unreadMessages = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .leftJoin(
+      readReceipts,
+      and(
+        eq(messages.id, readReceipts.messageId),
+        eq(readReceipts.userId, userId)
+      )
+    )
+    .where(
+      and(
+        eq(messages.roomId, roomId),
+        ne(messages.senderId, userId),
+        isNull(readReceipts.messageId)
+      )
+    );
+
+  if (unreadMessages.length === 0) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "No new messages to mark"));
+  }
+
+  const insertData = unreadMessages.map(({ id }) => ({
+    messageId: id,
+    userId,
+  }));
+
+  await db.insert(readReceipts).values(insertData);
+
+  const io = req.app.get("io");
+  io.to(roomId).emit("messages_read", {
+    roomId,
+    readByUserId: userId,
+    messageIds: unreadMessages.map((m) => m.id),
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { markedCount: unreadMessages.length },
+        "Messages marked as read"
+      )
+    );
+});
+
+export { getRoomMessages, sendMessage, deleteMessage, markMessagesAsRead };

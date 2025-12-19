@@ -8,6 +8,7 @@ import {
   timestamp,
   pgEnum,
   primaryKey,
+  json,
 } from "drizzle-orm/pg-core";
 
 const roleEnum = pgEnum("role", ["ADMIN", "MEMBER"]);
@@ -58,6 +59,12 @@ const participants = pgTable(
   })
 );
 
+const attachmentTypeEnum = pgEnum("attachment_type", [
+  "IMAGE",
+  "VIDEO",
+  "AUDIO",
+  "DOCUMENT",
+]);
 const messages = pgTable("messages", {
   id: uuid("id").defaultRandom().primaryKey(),
   content: text("content").notNull(),
@@ -70,9 +77,27 @@ const messages = pgTable("messages", {
     .references(() => rooms.id),
   attachmentUrl: varchar("attachment_url", { length: 255 }),
   attachmentPublicId: varchar("attachment_public_id", { length: 255 }),
+  attachmentType: attachmentTypeEnum("attachment_type").default("IMAGE"),
+  urlPreview: json("url_preview"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+const readReceipts = pgTable(
+  "read_receipts",
+  {
+    messageId: uuid("message_id")
+      .references(() => messages.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    readAt: timestamp("read_at").defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.messageId, t.userId] }),
+  })
+);
 
 const userRelation = relations(users, ({ many }) => ({
   roomParticipating: many(participants), // A user is in many rooms
@@ -120,4 +145,6 @@ export {
   roomRelation,
   messagesRelation,
   participantsRelation,
+  readReceipts,
+  attachmentTypeEnum,
 };

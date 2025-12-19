@@ -7,6 +7,7 @@ import {
   getRoomById,
   leaveRoom,
   removeParticipants,
+  searchRooms,
   updateRoomAvatar,
   updateRoomDetails,
 } from "controllers/room.controllers";
@@ -28,6 +29,7 @@ router
   );
 
 router.route("/get-rooms").get(verifyJWT, getMyRooms);
+router.route("/search").get(verifyJWT, searchRooms);
 
 router
   .route("/:roomId")
