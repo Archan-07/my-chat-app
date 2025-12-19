@@ -30,6 +30,3 @@ pids
 *.njsproj
 *.sln
 *.sw?
-
-.prettierignore
-.prettierrc
