@@ -8,8 +8,8 @@ import {
   timestamp,
   pgEnum,
   primaryKey,
-  uniqueIndex,
   json,
+  index,
 } from "drizzle-orm/pg-core";
 
 const roleEnum = pgEnum("role", ["ADMIN", "MEMBER"]);
@@ -29,25 +29,33 @@ const users = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
-  (table) => {
-    uniqueIndex("username_idx").on(table.username);
-    uniqueIndex("email_idx").on(table.email);
-  }
+  (table) => ({
+    username_idx: index("username_idx").on(table.username),
+    email_idx: index("email_idx").on(table.email),
+    refreshToken_idx: index("refreshToken_idx").on(table.refreshToken),
+  })
 );
 
-const rooms = pgTable("rooms", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: varchar("name", { length: 50 }).notNull(),
-  description: varchar("description", { length: 255 }),
-  isGroup: boolean("is_group").default(true),
-  roomAvatar: varchar("roomAvatar", { length: 255 }), // URL to Cloudinary
-  avatarPublicId: varchar("avatarPublicId", { length: 255 }),
-  adminId: uuid("admin_id")
-    .notNull()
-    .references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+const rooms = pgTable(
+  "rooms",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 50 }).notNull(),
+    description: varchar("description", { length: 255 }),
+    isGroup: boolean("is_group").default(true),
+    roomAvatar: varchar("roomAvatar", { length: 255 }), // URL to Cloudinary
+    avatarPublicId: varchar("avatarPublicId", { length: 255 }),
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    name_idx: index("name_idx").on(table.name),
+    adminId_idx: index("adminId_idx").on(table.adminId),
+  })
+);
 
 const participants = pgTable(
   "participants",
@@ -64,6 +72,8 @@ const participants = pgTable(
   (t) => ({
     // Composite Primary Key: A user cannot join the same room twice
     pk: primaryKey({ columns: [t.userId, t.roomId] }),
+    userId_idx: index("participants_userId_idx").on(t.userId),
+    roomId_idx: index("participants_roomId_idx").on(t.roomId),
   })
 );
 
@@ -73,23 +83,33 @@ const attachmentTypeEnum = pgEnum("attachment_type", [
   "AUDIO",
   "DOCUMENT",
 ]);
-const messages = pgTable("messages", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  content: text("content").notNull(),
-  senderId: uuid("sender_id")
-    .notNull()
-    .references(() => users.id),
+const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    content: text("content").notNull(),
+    senderId: uuid("sender_id")
+      .notNull()
+      .references(() => users.id),
 
-  roomId: uuid("room_id")
-    .notNull()
-    .references(() => rooms.id),
-  attachmentUrl: varchar("attachment_url", { length: 255 }),
-  attachmentPublicId: varchar("attachment_public_id", { length: 255 }),
-  attachmentType: attachmentTypeEnum("attachment_type").default("IMAGE"),
-  urlPreview: json("url_preview"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => rooms.id),
+    attachmentUrl: varchar("attachment_url", { length: 255 }),
+    attachmentPublicId: varchar("attachment_public_id", { length: 255 }),
+    attachmentType: attachmentTypeEnum("attachment_type").default("IMAGE"),
+    urlPreview: json("url_preview"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    senderId_idx: index("senderId_idx").on(table.senderId),
+    roomId_createdAt_idx: index("roomId_createdAt_idx").on(
+      table.roomId,
+      table.createdAt
+    ),
+  })
+);
 
 const readReceipts = pgTable(
   "read_receipts",
@@ -104,6 +124,8 @@ const readReceipts = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.messageId, t.userId] }),
+    messageId_idx: index("read_receipts_messageId_idx").on(t.messageId),
+    userId_idx: index("read_receipts_userId_idx").on(t.userId),
   })
 );
 
