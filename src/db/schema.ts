@@ -8,24 +8,32 @@ import {
   timestamp,
   pgEnum,
   primaryKey,
+  uniqueIndex,
   json,
 } from "drizzle-orm/pg-core";
 
 const roleEnum = pgEnum("role", ["ADMIN", "MEMBER"]);
 
-const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(), // Auto-generate UUID
-  username: varchar("username", { length: 50 }).notNull().unique(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  password: varchar("password", { length: 255 }).notNull(), // Hashed passwords need space
-  avatar: varchar("avatar", { length: 255 }), // URL to Cloudinary
-  avatarPublicId: varchar("avatarPublicId", { length: 255 }),
-  isOnline: boolean("is_online").default(false),
-  refreshToken: text("refreshToken"),
-  lastSeen: timestamp("last_seen"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(), // Auto-generate UUID
+    username: varchar("username", { length: 50 }).notNull().unique(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
+    password: varchar("password", { length: 255 }).notNull(), // Hashed passwords need space
+    avatar: varchar("avatar", { length: 255 }), // URL to Cloudinary
+    avatarPublicId: varchar("avatarPublicId", { length: 255 }),
+    isOnline: boolean("is_online").default(false),
+    refreshToken: text("refreshToken"),
+    lastSeen: timestamp("last_seen"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => {
+    uniqueIndex("username_idx").on(table.username);
+    uniqueIndex("email_idx").on(table.email);
+  }
+);
 
 const rooms = pgTable("rooms", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -294,7 +294,6 @@ const updateAccountDetails = asyncHandler(
       throw new ApiError(400, "No details provided to update");
     }
 
-    // Check if email is already in use by another user
     if (email) {
       const [existingUser] = await db
         .select({ id: users.id })
@@ -307,7 +306,6 @@ const updateAccountDetails = asyncHandler(
       }
     }
 
-    // Check if username is already in use by another user
     if (username) {
       const [existingUser] = await db
         .select({ id: users.id })
@@ -357,11 +355,9 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
 
   const oldPublicId = req.user?.avatarPublicId;
   if (oldPublicId) {
-    // Don't await this, let it happen in background for speed
     deleteFromCloudinary(oldPublicId);
   }
 
-  // 3. Update DB
   const [updatedUser] = await db
     .update(users)
     .set({

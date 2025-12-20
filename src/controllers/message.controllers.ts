@@ -69,7 +69,7 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
   const [savedMessage] = await db
     .insert(messages)
     .values({
-      content: content || "", // Content can be empty if sending just image
+      content: content || "",
       roomId,
       senderId: userId,
       attachmentUrl,
@@ -124,7 +124,6 @@ const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
   const msg = msgCheck[0];
   const isAdmin = room.adminId === userId;
   const isOwner = msg.senderId === userId;
-  // .where(and(eq(messages.id, messageId), eq(messages.roomId, roomId)));
 
   if (!isOwner && !isAdmin) {
     throw new ApiError(403, "You can only delete your own messages");
@@ -136,7 +135,6 @@ const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
 
   await db.delete(messages).where(eq(messages.id, messageId));
 
-  // Notify Room via Socket
   const io = req.app.get("io");
   io.to(roomId).emit("message_deleted", { messageId });
 
@@ -147,8 +145,6 @@ const markMessagesAsRead = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = req.user!.id;
 
-  // 1. Find messages in the room NOT sent by this user
-  // 2. That do NOT already have a read receipt for this user
   const unreadMessages = await db
     .select({ id: messages.id })
     .from(messages)

@@ -6,7 +6,6 @@ import { db } from "../db";
 import { rooms, participants, users } from "../db/schema";
 import { eq, desc, and, sql, ilike } from "drizzle-orm";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
-import { log } from "node:console";
 
 const createRoom = asyncHandler(async (req: Request, res: Response) => {
   const { name, description, isGroup } = req.body;
@@ -140,8 +139,6 @@ const updateRoomAvatar = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = req.user!.id;
   const avatarLocalPath = req.file?.path;
-
-  console.log("avatarLocalPath-------------", avatarLocalPath);
 
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar is required");
@@ -344,36 +341,27 @@ const createOrGetOneOnOneChat = asyncHandler(
   }
 );
 
-
 const searchRooms = asyncHandler(async (req: Request, res: Response) => {
   const { query } = req.query;
 
   if (!query || typeof query !== "string") {
     throw new ApiError(400, "Search query is required");
   }
-  
+
   const foundRooms = await db
     .select({
-        id: rooms.id,
-        name: rooms.name,
-        description: rooms.description,
-        avatar: rooms.roomAvatar,
-        isGroup: rooms.isGroup
+      id: rooms.id,
+      name: rooms.name,
+      description: rooms.description,
+      avatar: rooms.roomAvatar,
+      isGroup: rooms.isGroup,
     })
     .from(rooms)
-    .where(
-      and(
-        eq(rooms.isGroup, true), // Usually we only search Groups, not DMs
-        ilike(rooms.name, `%${query}%`)
-      )
-    )
+    .where(and(eq(rooms.isGroup, true), ilike(rooms.name, `%${query}%`)))
     .limit(20);
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, foundRooms, "Rooms found"));
+  return res.status(200).json(new ApiResponse(200, foundRooms, "Rooms found"));
 });
-
 
 export {
   createRoom,

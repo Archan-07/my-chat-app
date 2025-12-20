@@ -44,7 +44,6 @@ import messageRouter from "./routes/message.route";
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // ... inside startServer or near app.listen ...
-console.log("Swagger APIs:", swaggerSpec);
 
 app.use("/api/v1/users", authRouter);
 app.use("/api/v1/rooms", roomRouter);
