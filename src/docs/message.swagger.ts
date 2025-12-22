@@ -112,7 +112,7 @@
 
 /**
  * @swagger
- * /api/v1/messages/{roomId}:
+ * /messages/{roomId}:
  *   get:
  *     summary: Get room messages
  *     description: Retrieve message history for a specific room (last 50 messages, newest first)
@@ -145,7 +145,7 @@
 
 /**
  * @swagger
- * /api/v1/messages/send-message/{roomId}:
+ * /messages/send-message/{roomId}:
  *   post:
  *     summary: Send message to room
  *     description: Send a text message and/or file attachment to a room with optional link preview
@@ -196,7 +196,7 @@
 
 /**
  * @swagger
- * /api/v1/messages/delete-message/{messageId}/{roomId}:
+ * /messages/delete-message/{messageId}/{roomId}:
  *   delete:
  *     summary: Delete message
  *     description: Delete a message from a room (only message owner or room admin can delete)
@@ -248,7 +248,7 @@
 
 /**
  * @swagger
- * /api/v1/messages/mark-read/{roomId}:
+ * /messages/mark-read/{roomId}:
  *   post:
  *     summary: Mark messages as read
  *     description: Mark all unread messages in a room as read for the current user

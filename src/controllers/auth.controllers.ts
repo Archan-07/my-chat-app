@@ -34,16 +34,16 @@ const generateAccessRefreshTokens = async (userId: string) => {
         email: user.email,
         username: user.username,
       },
-      env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: env.ACCESS_TOKEN_EXPIRY! }
+      env.ACCESS_TOKEN_SECRET as jwt.Secret,
+      { expiresIn: env.ACCESS_TOKEN_EXPIRY } as jwt.SignOptions
     );
 
     const refreshToken = jwt.sign(
       {
         _id: user.id,
       },
-      env.REFRESH_TOKEN_SECRET,
-      { expiresIn: env.REFRESH_TOKEN_EXPIRY as string }
+      env.REFRESH_TOKEN_SECRET as jwt.Secret,
+      { expiresIn: env.REFRESH_TOKEN_EXPIRY } as jwt.SignOptions
     );
 
     await db
@@ -233,9 +233,11 @@ const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
 
 const changePassword = asyncHandler(async (req: Request, res: Response) => {
   const { oldPassword, newPassword } = req.body;
-  const userId = req.user?.id;
+  const userId = req.user?.id!;
 
-  if (!userId) throw new ApiError(401, "Unauthorized");
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized");
+  }
 
   const [user] = await db
     .select()
@@ -248,7 +250,7 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
   }
   const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
   if (!isPasswordValid) {
-    throw new ApiError(401, "Current password is incorrect");
+    throw new ApiError(400, "Current password is incorrect");
   }
   const hashedNewPassword = await bcrypt.hash(newPassword, 10);
   await db

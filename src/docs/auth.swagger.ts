@@ -236,16 +236,8 @@
  *     description: Generate a new access token using refresh token
  *     tags:
  *       - Authentication
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               refreshToken:
- *                 type: string
- *                 description: Refresh token (can also be sent via cookies)
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Access token refreshed successfully

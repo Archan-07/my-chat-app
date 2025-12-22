@@ -8,7 +8,9 @@
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
   },
   "include": ["src/**/*", "types/**/*"]
 }

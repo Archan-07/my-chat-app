@@ -163,7 +163,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/create-room:
+ * /rooms/create-room:
  *   post:
  *     summary: Create a new room
  *     description: Create a new chat room (group or direct) with optional avatar
@@ -206,7 +206,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/get-rooms:
+ * /rooms/get-rooms:
  *   get:
  *     summary: Get all rooms for current user
  *     description: Retrieve all rooms the authenticated user is a member of
@@ -231,7 +231,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/search:
+ * /rooms/search:
  *   get:
  *     summary: Search for rooms
  *     description: Search for group rooms by name (excludes direct messages)
@@ -270,7 +270,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/{roomId}:
+ * /rooms/{roomId}:
  *   get:
  *     summary: Get room details
  *     description: Retrieve detailed information about a room including all participants
@@ -403,7 +403,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/update-room-avatar/{roomId}:
+ * /rooms/update-room-avatar/{roomId}:
  *   patch:
  *     summary: Update room avatar
  *     description: Upload and update room profile picture (admin only)
@@ -482,7 +482,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/add-participants/{roomId}:
+ * /rooms/add-participants/{roomId}:
  *   post:
  *     summary: Add participant to room
  *     description: Add a user to the room (admin only)
@@ -555,7 +555,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/remove-participants/{roomId}:
+ * /rooms/remove-participants/{roomId}:
  *   post:
  *     summary: Remove participant from room
  *     description: Remove a user from the room (admin only)
@@ -622,7 +622,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/leave/{roomId}:
+ * /rooms/leave/{roomId}:
  *   post:
  *     summary: Leave room
  *     description: Remove current user from a room
@@ -663,7 +663,7 @@
 
 /**
  * @swagger
- * /api/v1/rooms/dm/{receiverId}:
+ * /rooms/dm/{receiverId}:
  *   post:
  *     summary: Create or get one-on-one chat
  *     description: Create a new direct message room or retrieve existing one with a user
