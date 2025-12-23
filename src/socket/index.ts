@@ -5,6 +5,8 @@ import { users, messages } from "../db/schema";
 import { eq } from "drizzle-orm";
 import Logger from "../utils/logger";
 import { env } from "../config/env";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
 
 interface CustomSocket extends Socket {
   user?: {
@@ -14,7 +16,22 @@ interface CustomSocket extends Socket {
   };
 }
 
-const initializeSocketIO = (io: Server) => {
+const pubClient = createClient({ url: env.REDIS_URL });
+const subClient = pubClient.duplicate();
+
+const initializeSocketIO = async (io: Server) => {
+  // connect redis clients and set adapter before handlers
+  try {
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    Logger.info("🔁 Redis adapter connected for Socket.IO");
+  } catch (err) {
+    Logger.warn(
+      "⚠️ Could not connect Redis adapter for Socket.IO, continuing without adapter",
+      err
+    );
+  }
+
   // 1. MIDDLEWARE
   io.use(async (socket: CustomSocket, next) => {
     try {
@@ -135,5 +152,7 @@ const initializeSocketIO = (io: Server) => {
     });
   });
 };
+
+// end initializeSocketIO
 
 export { initializeSocketIO };

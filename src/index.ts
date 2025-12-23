@@ -2,8 +2,6 @@ import { app } from "./app";
 import { env } from "config/env";
 import { db } from "./db/index"; // Drizzle Instance
 import { sql } from "drizzle-orm";
-import cluster from "node:cluster";
-import os from "node:os";
 import Logger from "./utils/logger";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -29,7 +27,7 @@ const startServer = async () => {
       },
     });
 
-    initializeSocketIO(io);
+    await initializeSocketIO(io);
     app.set("io", io);
 
     // 4. Listen

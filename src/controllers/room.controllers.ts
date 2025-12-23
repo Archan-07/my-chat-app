@@ -6,6 +6,8 @@ import { db } from "../db";
 import { rooms, participants, users } from "../db/schema";
 import { eq, desc, and, sql, ilike } from "drizzle-orm";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
+import { get as cacheGet, set as cacheSet, del as cacheDel } from "utils/cache";
+import Logger from "utils/logger";
 
 const createRoom = asyncHandler(async (req: Request, res: Response) => {
   const { name, description, isGroup } = req.body;
@@ -56,6 +58,19 @@ const createRoom = asyncHandler(async (req: Request, res: Response) => {
 const getMyRooms = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, "User not authenticated");
+  const cacheKey = `user:profile:${userId}`;
+
+  try {
+    const cached = await cacheGet(cacheKey);
+
+    if (cached) {
+      return res
+        .status(200)
+        .json(new ApiResponse(200, cached, "Rooms fetched successfully"));
+    }
+  } catch (err) {
+    Logger.warn("Cache read failed for getMyRooms:", (err as Error).message);
+  }
 
   const userRooms = await db
     .select({
@@ -71,6 +86,13 @@ const getMyRooms = asyncHandler(async (req: Request, res: Response) => {
     .innerJoin(rooms, eq(participants.roomId, rooms.id))
     .where(eq(participants.userId, userId))
     .orderBy(desc(participants.joinedAt));
+
+  try {
+    await cacheSet(cacheKey, userRooms, 600);
+  } catch (err) {
+    Logger.warn("Cache set failed for getMyRooms:", (err as Error).message);
+  }
+
   return res
     .status(200)
     .json(new ApiResponse(200, userRooms, "Rooms fetched successfully"));
@@ -78,6 +100,26 @@ const getMyRooms = asyncHandler(async (req: Request, res: Response) => {
 
 const getRoomById = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
+
+  const cacheRoomKey = `room:meta:${roomId}`;
+  const cacheParticipantKey = `room:participants:${roomId}`;
+  try {
+    const cachedRoom = await cacheGet(cacheRoomKey);
+    const cachedParticipants = await cacheGet(cacheParticipantKey);
+    if (cachedRoom && cachedParticipants) {
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            { ...cachedRoom, participants: cachedParticipants },
+            "Room details fetched"
+          )
+        );
+    }
+  } catch (err) {
+    Logger.warn("Cache read failed for getRoomById:", (err as Error).message);
+  }
 
   const [room] = await db
     .select()
@@ -98,6 +140,13 @@ const getRoomById = asyncHandler(async (req: Request, res: Response) => {
     .from(participants)
     .innerJoin(users, eq(participants.userId, users.id))
     .where(eq(participants.roomId, room.id));
+
+  try {
+    await cacheSet(cacheRoomKey, room, 3600);
+    await cacheSet(cacheParticipantKey, participantsList, 1800);
+  } catch (err) {
+    Logger.warn("Cache set failed for getRoomById:", (err as Error).message);
+  }
 
   return res
     .status(200)

@@ -10,8 +10,7 @@ import { ApiResponse } from "utils/ApiResponse";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { env } from "config/env";
 import Logger from "utils/logger";
-import id from "zod/v4/locales/id.js";
-
+import { get as cacheGet, set as cacheSet, del as cacheDel } from "utils/cache";
 interface CustomJwtPayload extends JwtPayload {
   _id: string;
 }
@@ -266,6 +265,24 @@ const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, "Unauthorized");
 
+  const cacheKeys = `user:profile:${userId}`;
+
+  try {
+    const cached = await cacheGet(cacheKeys);
+    if (cached) {
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(200, cached, "Current user fetched successfully")
+        );
+    }
+  } catch (err) {
+    Logger.warn(
+      "Cache read failed for getCurrentUser:",
+      (err as Error).message
+    );
+  }
+
   const [user] = await db
     .select({
       id: users.id,
@@ -274,15 +291,34 @@ const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
       avatar: users.avatar,
       createdAt: users.createdAt,
       refreshToken: users.refreshToken,
+      isOnline: users.isOnline,
     })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
 
+  if (!user) throw new ApiError(404, "User not found");
+
+  const publicUser = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    avatar: user.avatar,
+    createdAt: user.createdAt,
+    isOnline: user.isOnline,
+  };
+
+  try {
+    await cacheSet(cacheKeys, publicUser, 3600);
+  } catch (err) {
+    Logger.warn("Cache set failed for getCurrentUser:", (err as Error).message);
+  }
+
   return res
     .status(200)
     .json(new ApiResponse(200, user, "Current user fetched successfully"));
 });
+
 const updateAccountDetails = asyncHandler(
   async (req: Request, res: Response) => {
     const { email, username } = req.body;
@@ -335,6 +371,16 @@ const updateAccountDetails = asyncHandler(
         avatar: users.avatar,
       });
 
+    const cacheKey = `user:profile:${userId}`;
+    try {
+      if (updatedUser) await cacheSet(cacheKey, updatedUser, 3600);
+    } catch (err) {
+      Logger.warn(
+        "Cache set failed after updateAccountDetails:",
+        (err as Error).message
+      );
+    }
+
     return res
       .status(200)
       .json(
@@ -373,11 +419,18 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
       email: users.email,
       avatar: users.avatar,
     });
+  try {
+    const cacheKey = `user:profile:${userId}`;
+    if (updatedUser) await cacheSet(cacheKey, updatedUser, 3600);
+  } catch (err) {
+    Logger.warn("Cache set failed after updateAvatar:", (err as Error).message);
+  }
 
   return res
     .status(200)
     .json(new ApiResponse(200, updatedUser, "Avatar updated successfully"));
 });
+
 const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
   if (!userId) throw new ApiError(401, "Unauthorized");
@@ -391,6 +444,16 @@ const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
     httpOnly: true,
     secure: true,
   };
+
+  const cacheKey = `user:profile:${userId}`;
+  try {
+    await cacheDel(cacheKey);
+  } catch (err) {
+    Logger.warn(
+      "Cache delete failed after deleteUser:",
+      (err as Error).message
+    );
+  }
 
   return res
     .status(200)

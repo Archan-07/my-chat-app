@@ -4,6 +4,7 @@ jspm_packages/
 drizzle/
 logs/
 dist/
+run_redis_coomands.text
 # Environment variables
 .env
 .env.test

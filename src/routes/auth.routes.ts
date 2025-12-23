@@ -11,6 +11,7 @@ import {
   updateAvatar,
 } from "../controllers/auth.controllers"; // Check your import paths if you use aliases
 import { Router } from "express";
+import redisRateLimiter from "../middlewares/redisRateLimiter";
 import { verifyJWT } from "../middlewares/auth.middleware";
 import { upload } from "../middlewares/multer.middleware";
 import { validate } from "../middlewares/validator.middleware";
@@ -25,11 +26,25 @@ const router = Router();
 
 router
   .route("/login")
-  .post(upload.none(), validate(userLoginSchema), loginUser);
+  .post(
+    upload.none(),
+    validate(userLoginSchema),
+    redisRateLimiter({ windowSec: 60, max: 8, keyPrefix: "rl:auth:login:" }),
+    loginUser
+  );
 
 router
   .route("/register")
-  .post(upload.single("avatar"), validate(userRegisterSchema), registerUser);
+  .post(
+    upload.single("avatar"),
+    validate(userRegisterSchema),
+    redisRateLimiter({
+      windowSec: 60 * 60,
+      max: 6,
+      keyPrefix: "rl:auth:register:",
+    }),
+    registerUser
+  );
 
 router.route("/refresh-access-token").post(refreshAccessToken);
 router.route("/logout").post(verifyJWT, loggedOutUser);
