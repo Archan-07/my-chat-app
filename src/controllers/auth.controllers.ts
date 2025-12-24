@@ -120,6 +120,11 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(404, "User does not exist");
   }
 
+  // --- Deactivation Check ---
+  if (!user.isActive) {
+    throw new ApiError(403, "This account has been deactivated.");
+  }
+
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
@@ -431,36 +436,51 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, updatedUser, "Avatar updated successfully"));
 });
 
-const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user?.id;
-  if (!userId) throw new ApiError(401, "Unauthorized");
+const deactivateUserAccount = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) throw new ApiError(401, "Unauthorized");
 
-  const avatarPublicId = req.user?.avatarPublicId;
-  if (avatarPublicId) {
-    await deleteFromCloudinary(avatarPublicId);
+    // Instead of deleting, we deactivate the user to preserve data integrity
+    await db
+      .update(users)
+      .set({
+        isActive: false,
+        refreshToken: null,
+        // Anonymize user details to free them up for new registrations
+        username: `deactivated_${Date.now()}_${userId.substring(0, 8)}`,
+        email: `${userId}@deactivated.example.com`,
+      })
+      .where(eq(users.id, userId));
+
+    // Note: We are NOT deleting the avatar from Cloudinary.
+    // Old messages might still reference it. A background cleanup job
+    // could handle orphaned avatars in the future if needed.
+
+    const options = {
+      httpOnly: true,
+      secure: true,
+    };
+
+    const cacheKey = `user:profile:${userId}`;
+    try {
+      await cacheDel(cacheKey);
+    } catch (err) {
+      Logger.warn(
+        "Cache delete failed after deactivating user:",
+        (err as Error).message
+      );
+    }
+
+    return res
+      .status(200)
+      .clearCookie("accessToken", options)
+      .clearCookie("refreshToken", options)
+      .json(
+        new ApiResponse(200, {}, "User account deactivated successfully")
+      );
   }
-  await db.delete(users).where(eq(users.id, userId));
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
-
-  const cacheKey = `user:profile:${userId}`;
-  try {
-    await cacheDel(cacheKey);
-  } catch (err) {
-    Logger.warn(
-      "Cache delete failed after deleteUser:",
-      (err as Error).message
-    );
-  }
-
-  return res
-    .status(200)
-    .clearCookie("accessToken", options)
-    .clearCookie("refreshToken", options)
-    .json(new ApiResponse(200, {}, "User deleted successfully"));
-});
+);
 
 const searchUser = asyncHandler(async (req: Request, res: Response) => {
   const { query } = req.query;
@@ -481,6 +501,7 @@ const searchUser = asyncHandler(async (req: Request, res: Response) => {
     .from(users)
     .where(
       and(
+        eq(users.isActive, true), // --- Only search active users ---
         ne(users.id, currentUserId!),
         or(
           ilike(users.username, `%${query}%`),
@@ -501,6 +522,6 @@ export {
   updateAccountDetails,
   updateAvatar,
   getCurrentUser,
-  deleteUserAccount,
+  deactivateUserAccount,
   searchUser,
 };

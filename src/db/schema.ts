@@ -24,6 +24,7 @@ const users = pgTable(
     avatar: varchar("avatar", { length: 255 }), // URL to Cloudinary
     avatarPublicId: varchar("avatarPublicId", { length: 255 }),
     isOnline: boolean("is_online").default(false),
+    isActive: boolean("is_active").default(true).notNull(),
     refreshToken: text("refreshToken"),
     lastSeen: timestamp("last_seen"),
     createdAt: timestamp("created_at").defaultNow(),

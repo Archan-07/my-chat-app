@@ -1,6 +1,6 @@
 import {
   changePassword,
-  deleteUserAccount,
+  deactivateUserAccount,
   getCurrentUser,
   loggedOutUser,
   loginUser,
@@ -68,7 +68,7 @@ router
   .route("/update-avatar")
   .put(verifyJWT, upload.single("avatar"), updateAvatar);
 
-router.route("/delete-user").delete(verifyJWT, deleteUserAccount);
+router.route("/delete-user").delete(verifyJWT, deactivateUserAccount);
 
 router.route("/find-user").get(verifyJWT, searchUser);
 

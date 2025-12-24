@@ -1,8 +1,8 @@
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { db } from "../db";
-import { users, messages } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { users, messages, participants } from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import Logger from "../utils/logger";
 import { env } from "../config/env";
 import { createAdapter } from "@socket.io/redis-adapter";
@@ -76,19 +76,57 @@ const initializeSocketIO = async (io: Server) => {
     }
 
     // B. Join Room
-    socket.on("join-room", (data: { roomId: string } | string) => {
-      const roomId = typeof data === "object" ? data.roomId : data;
+    socket.on("join-room", async (data: { roomId: string } | string) => {
+      try {
+        const roomId = typeof data === "object" ? data.roomId : data;
+        const userId = socket.user?.id;
 
-      if (!roomId) {
-        Logger.warn(`User ${socket.user?.username} tried to join empty room`);
-        return;
+        if (!roomId || !userId) {
+          Logger.warn(
+            `User ${socket.user?.username} tried to join a room with invalid data.`
+          );
+          socket.emit("error", {
+            message: "Room ID and User ID must be provided.",
+          });
+          return;
+        }
+
+        // --- AUTHORIZATION CHECK ---
+        const [participant] = await db
+          .select()
+          .from(participants)
+          .where(
+            and(
+              eq(participants.userId, userId),
+              eq(participants.roomId, roomId)
+            )
+          )
+          .limit(1);
+
+        if (!participant) {
+          Logger.warn(
+            `Unauthorized join attempt by ${userId} to room ${roomId}`
+          );
+          socket.emit("error", {
+            message: "You are not a member of this room.",
+          });
+          return;
+        }
+
+        socket.join(roomId);
+        Logger.info(`User ${socket.user?.username} joined room: ${roomId}`);
+
+        const roomSize = io.sockets.adapter.rooms.get(roomId)?.size || 0;
+        Logger.info(`👥 Room ${roomId} now has ${roomSize} active member(s)`);
+      } catch (error) {
+        Logger.error(
+          `Error in join-room event for user ${socket.user?.id}:`,
+          error
+        );
+        socket.emit("error", {
+          message: "An internal server error occurred while joining the room.",
+        });
       }
-
-      socket.join(roomId);
-      Logger.info(`User ${socket.user?.username} joined room: ${roomId}`);
-
-      const roomSize = io.sockets.adapter.rooms.get(roomId)?.size || 0;
-      Logger.info(`👥 Room ${roomId} now has ${roomSize} active member(s)`);
     });
 
     socket.on("typing", (data: { roomId: string } | string) => {
