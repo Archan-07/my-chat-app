@@ -106,11 +106,6 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
       urlPreview: urlPreview,
     })
     .returning();
-
-  // Caching opportunity:
-  // User data (username, avatar) does not change often and can be cached.
-  // A good cache key would be `user:${userId}`.
-  // This would avoid a database query on every message sent.
   const [senderInfo] = await db
     .select({
       id: users.id,
@@ -146,7 +141,6 @@ const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id!;
   const cacheKey = `messages:${roomId}`;
 
-  // The two database queries are independent, so they can be run in parallel.
   const [msgResult, roomResult] = await Promise.all([
     db
       .select()
