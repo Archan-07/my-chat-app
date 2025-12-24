@@ -7,9 +7,32 @@ import { eq, desc, asc, and, sql, isNotNull, ne, isNull } from "drizzle-orm";
 import { ApiError } from "utils/ApiError";
 import { deleteFromCloudinary, uploadOnCloudinary } from "utils/cloudinary";
 import { getLinkPreview } from "utils/linkPreview";
+import { get as cacheGet, set as cacheSet, del as cacheDel } from "utils/cache";
+import Logger from "utils/logger";
 
 const getRoomMessages = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
+
+  const cacheKey = `messages:${roomId}`;
+
+  try {
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      return res
+        .status(200)
+        .json(new ApiResponse(200, cached, "Messages fetched"));
+    }
+  } catch (error) {
+    Logger.error("Failed to get cached message in getRoomMessages", error);
+  }
+
+  const subquery = db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.roomId, roomId))
+    .orderBy(desc(messages.createdAt))
+    .limit(50)
+    .as("latest_messages");
 
   const history = await db
     .select({
@@ -21,17 +44,23 @@ const getRoomMessages = asyncHandler(async (req: Request, res: Response) => {
         username: users.username,
         avatar: users.avatar,
       },
+      urlPreview: messages.urlPreview,
+      attachmentUrl: messages.attachmentUrl,
     })
     .from(messages)
+    .innerJoin(subquery, eq(messages.id, subquery.id))
     .innerJoin(users, eq(messages.senderId, users.id))
-    .where(eq(messages.roomId, roomId))
-    .orderBy(asc(messages.createdAt))
-    .limit(50);
+    .orderBy(asc(messages.createdAt));
 
-  const sortedHistory = history.reverse();
+  try {
+    await cacheSet(cacheKey, history, 1800);
+  } catch (error) {
+    Logger.error("Failed to set cache in getRoomMessages", error);
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, sortedHistory, "Messages fetched"));
+    .json(new ApiResponse(200, history, "Messages fetched"));
 });
 
 const sendMessage = asyncHandler(async (req: Request, res: Response) => {
@@ -78,6 +107,10 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     })
     .returning();
 
+  // Caching opportunity:
+  // User data (username, avatar) does not change often and can be cached.
+  // A good cache key would be `user:${userId}`.
+  // This would avoid a database query on every message sent.
   const [senderInfo] = await db
     .select({
       id: users.id,
@@ -86,6 +119,14 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     })
     .from(users)
     .where(eq(users.id, userId));
+
+  const cacheKey = `user:${userId}`;
+
+  try {
+    await cacheSet(cacheKey, senderInfo, 3600);
+  } catch (error) {
+    Logger.error("Failed to set cache in sendMessage", error);
+  }
 
   const socketPayload = {
     ...savedMessage,
@@ -103,31 +144,41 @@ const sendMessage = asyncHandler(async (req: Request, res: Response) => {
 const deleteMessage = asyncHandler(async (req: Request, res: Response) => {
   const { messageId, roomId } = req.params;
   const userId = req.user?.id!;
+  const cacheKey = `messages:${roomId}`;
 
-  const msgCheck = await db
-    .select()
-    .from(messages)
-    .where(and(eq(messages.id, messageId), eq(messages.roomId, roomId)))
-    .limit(1);
+  // The two database queries are independent, so they can be run in parallel.
+  const [msgResult, roomResult] = await Promise.all([
+    db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.id, messageId), eq(messages.roomId, roomId)))
+      .limit(1),
+    db
+      .select({ adminId: rooms.adminId })
+      .from(rooms)
+      .where(eq(rooms.id, roomId))
+      .limit(1),
+  ]);
 
-  const [room] = await db
-    .select({ adminId: rooms.adminId })
-    .from(rooms)
-    .where(eq(rooms.id, roomId))
-    .limit(1);
+  if (msgResult.length === 0) {
+    throw new ApiError(404, "Message not found");
+  }
 
-  if (!room) {
+  if (roomResult.length === 0) {
     throw new ApiError(404, "Room not found");
   }
 
-  if (msgCheck.length === 0) throw new ApiError(404, "Message not found");
-  const msg = msgCheck[0];
+  const msg = msgResult[0];
+  const room = roomResult[0];
+
   const isAdmin = room.adminId === userId;
   const isOwner = msg.senderId === userId;
 
   if (!isOwner && !isAdmin) {
     throw new ApiError(403, "You can only delete your own messages");
   }
+
+  await cacheDel(cacheKey)
 
   if (msg.attachmentPublicId) {
     await deleteFromCloudinary(msg.attachmentPublicId);

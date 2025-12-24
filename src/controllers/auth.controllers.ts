@@ -89,7 +89,7 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
       username,
       password: hashedPassword,
       avatar: avtarUrl,
-      avatarPublicId: avatarLocalPath,
+      avatarPublicId: avatarPublicId,
     })
     .returning({
       id: users.id,
@@ -212,8 +212,8 @@ const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
 
     return res
       .status(200)
-      .cookie("AccessToken", accessToken, options)
-      .cookie("RefreshToken", newRefreshToken, options)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
       .json(
         new ApiResponse(
           200,
@@ -232,7 +232,7 @@ const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
 
 const changePassword = asyncHandler(async (req: Request, res: Response) => {
   const { oldPassword, newPassword } = req.body;
-  const userId = req.user?.id!;
+  const userId = req.user?.id;
 
   if (!userId) {
     throw new ApiError(401, "Unauthorized");
@@ -316,7 +316,7 @@ const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "Current user fetched successfully"));
+    .json(new ApiResponse(200, publicUser, "Current user fetched successfully"));
 });
 
 const updateAccountDetails = asyncHandler(
@@ -332,27 +332,23 @@ const updateAccountDetails = asyncHandler(
       throw new ApiError(400, "No details provided to update");
     }
 
-    if (email) {
-      const [existingUser] = await db
-        .select({ id: users.id })
+    if (email || username) {
+      const orConditions = [];
+      if (email) orConditions.push(eq(users.email, email));
+      if (username) orConditions.push(eq(users.username, username));
+
+      const conflictingUsers = await db
+        .select({ email: users.email, username: users.username })
         .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
+        .where(and(ne(users.id, userId), or(...orConditions)));
 
-      if (existingUser && existingUser.id !== userId) {
-        throw new ApiError(409, "Email is already in use");
-      }
-    }
-
-    if (username) {
-      const [existingUser] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
-
-      if (existingUser && existingUser.id !== userId) {
-        throw new ApiError(409, "Username is already in use");
+      if (conflictingUsers.length > 0) {
+        if (email && conflictingUsers.some((u) => u.email === email)) {
+          throw new ApiError(409, "Email is already in use");
+        }
+        if (username && conflictingUsers.some((u) => u.username === username)) {
+          throw new ApiError(409, "Username is already in use");
+        }
       }
     }
 
@@ -363,7 +359,7 @@ const updateAccountDetails = asyncHandler(
     const [updatedUser] = await db
       .update(users)
       .set(updateData)
-      .where(eq(users.id, userId!))
+      .where(eq(users.id, userId))
       .returning({
         id: users.id,
         username: users.username,
@@ -396,7 +392,11 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
   const avatarLocalPath = req.file?.path;
   const userId = req.user?.id;
 
-  const avatar = await uploadOnCloudinary(avatarLocalPath!);
+  if (!avatarLocalPath) {
+    throw new ApiError(400, "Avatar file is missing");
+  }
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
   if (!avatar?.secure_url) {
     throw new ApiError(500, "Error uploading avatar");
   }
@@ -464,7 +464,7 @@ const deleteUserAccount = asyncHandler(async (req: Request, res: Response) => {
 
 const searchUser = asyncHandler(async (req: Request, res: Response) => {
   const { query } = req.query;
-  const currentUserId = req.user?.id!;
+  const currentUserId = req.user?.id;
 
   if (!query || typeof query !== "string") {
     throw new ApiError(400, "Search query is required");
@@ -481,7 +481,7 @@ const searchUser = asyncHandler(async (req: Request, res: Response) => {
     .from(users)
     .where(
       and(
-        ne(users.id, currentUserId),
+        ne(users.id, currentUserId!),
         or(
           ilike(users.username, `%${query}%`),
           ilike(users.email, `%${query}%`)
