@@ -11,7 +11,7 @@ import {
   updateAvatar,
 } from "../controllers/auth.controllers"; // Check your import paths if you use aliases
 import { Router } from "express";
-import redisRateLimiter from "../middlewares/redisRateLimiter";
+import redisRateLimiter from "../middlewares/redisRateLimiter.middleware";
 import { verifyJWT } from "../middlewares/auth.middleware";
 import { upload } from "../middlewares/multer.middleware";
 import { validate } from "../middlewares/validator.middleware";

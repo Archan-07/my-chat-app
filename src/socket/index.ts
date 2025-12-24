@@ -19,6 +19,10 @@ interface CustomSocket extends Socket {
 const pubClient = createClient({ url: env.REDIS_URL });
 const subClient = pubClient.duplicate();
 
+const getRoomIdFromData = (data: { roomId: string } | string): string => {
+  return typeof data === "object" ? data.roomId : data;
+};
+
 const initializeSocketIO = async (io: Server) => {
   // connect redis clients and set adapter before handlers
   try {
@@ -130,7 +134,7 @@ const initializeSocketIO = async (io: Server) => {
     });
 
     socket.on("typing", (data: { roomId: string } | string) => {
-      const roomId = typeof data === "object" ? data.roomId : data;
+      const roomId = getRoomIdFromData(data);
 
       Logger.info(`✍️ Typing event received for room: ${roomId}`);
       socket.to(roomId).emit("display_typing", {
@@ -140,51 +144,28 @@ const initializeSocketIO = async (io: Server) => {
     });
 
     socket.on("stop_typing", (data: { roomId: string } | string) => {
-      const roomId = typeof data === "object" ? data.roomId : data;
+      const roomId = getRoomIdFromData(data);
       socket.to(roomId).emit("hide_typing", {
         userId: socket.user?.id,
       });
     });
 
-    // D. Send Message
-    socket.on(
-      "send-message",
-      async (data: { roomId: string; content: string }) => {
-        const { roomId, content } = data;
-
-        if (!roomId || !content) return;
-
-        try {
-          const [savedMessage] = await db
-            .insert(messages)
-            .values({ content, roomId, senderId: socket.user?.id! })
-            .returning();
-
-          const messagePayload = {
-            ...savedMessage,
-            sender: {
-              id: socket.user?.id,
-              username: socket.user?.username,
-              email: socket.user?.email,
-            },
-          };
-
-          io.to(roomId).emit("receive_message", messagePayload);
-        } catch (error) {
-          Logger.error(`Socket Error: ${error}`);
-        }
-      }
-    );
-
     // E. Disconnect
     socket.on("disconnect", async () => {
       if (userId) {
-        await db
-          .update(users)
-          .set({ isOnline: false, lastSeen: new Date() })
-          .where(eq(users.id, userId));
+        try {
+          await db
+            .update(users)
+            .set({ isOnline: false, lastSeen: new Date() })
+            .where(eq(users.id, userId));
 
-        io.emit("user_offline", { userId: userId, lastSeen: new Date() });
+          io.emit("user_offline", { userId: userId, lastSeen: new Date() });
+        } catch (error) {
+          Logger.error(
+            `Failed to update user status on disconnect for user ${userId}`,
+            error
+          );
+        }
       }
       Logger.info(`❌ User Disconnected: ${socket.user?.username}`);
     });

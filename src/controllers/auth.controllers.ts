@@ -47,7 +47,7 @@ const generateAccessRefreshTokens = async (userId: string) => {
 
     await db
       .update(users)
-      .set({ refreshToken: refreshToken })
+      .set({ refreshToken: refreshToken, updatedAt: new Date() })
       .where(eq(users.id, userId));
 
     return { accessToken, refreshToken };
@@ -169,7 +169,7 @@ const loggedOutUser = asyncHandler(async (req: Request, res: Response) => {
   if (req.user?.id) {
     await db
       .update(users)
-      .set({ refreshToken: null })
+      .set({ refreshToken: null, updatedAt: new Date() })
       .where(eq(users.id, req.user.id));
   }
   const options = {
@@ -259,7 +259,7 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
   const hashedNewPassword = await bcrypt.hash(newPassword, 10);
   await db
     .update(users)
-    .set({ password: hashedNewPassword })
+    .set({ password: hashedNewPassword, updatedAt: new Date() })
     .where(eq(users.id, userId));
 
   return res
@@ -357,9 +357,10 @@ const updateAccountDetails = asyncHandler(
       }
     }
 
-    const updateData: { email?: string; username?: string } = {};
+    const updateData: { email?: string; username?: string; updatedAt?: Date } = {};
     if (email) updateData.email = email;
     if (username) updateData.username = username;
+    updateData.updatedAt = new Date();
 
     const [updatedUser] = await db
       .update(users)
@@ -416,6 +417,7 @@ const updateAvatar = asyncHandler(async (req: Request, res: Response) => {
     .set({
       avatar: avatar.secure_url,
       avatarPublicId: avatar.public_id,
+      updatedAt: new Date(),
     })
     .where(eq(users.id, userId!))
     .returning({
@@ -450,6 +452,7 @@ const deactivateUserAccount = asyncHandler(
         // Anonymize user details to free them up for new registrations
         username: `deactivated_${Date.now()}_${userId.substring(0, 8)}`,
         email: `${userId}@deactivated.example.com`,
+        updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
 

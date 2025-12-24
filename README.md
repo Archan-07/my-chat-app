@@ -30,44 +30,38 @@
 
 ### 🔐 Authentication & Security
 
-- **User Registration** - Create accounts with email, username, and password
-- **Secure Login** - JWT-based authentication with access and refresh tokens
-- **Password Management** - Change password with old password verification
-- **Session Management** - Automatic token refresh and logout functionality
+- **User Registration & Login**: Secure user accounts with password hashing (bcrypt).
+- **JWT Authentication**: Stateless authentication using JSON Web Tokens (access and refresh tokens).
+- **Password Management**: Users can change their password after verifying the old one.
+- **Session Management**: Logout functionality and automatic token refresh.
+- **Account Deactivation**: Users can deactivate their accounts.
 
-### 💭 Messaging Features
+### 💭 Messaging & Rooms
 
-- **Real-Time Messaging** - Instant message delivery using WebSocket
-- **Group Chats** - Create and manage group conversations
-- **Direct Messages** - One-on-one private conversations
-- **File Attachments** - Share documents and media files
-- **Link Previews** - Automatic link preview generation
-- **Message History** - Full message history with pagination
-- **Message Deletion** - Delete sent messages (owner or admin only)
-- **Read Receipts** - Track message read status
+- **Real-Time Messaging**: Instant message delivery and updates via WebSockets (Socket.IO).
+- **Group & Private Rooms**: Supports both multi-user group chats and one-on-one direct messages.
+- **File Attachments**: Upload and share images, videos, and documents via Cloudinary.
+- **Link Previews**: Automatic generation of previews for URLs shared in messages.
+- **Message History**: Paginated message history for rooms.
+- **Message Deletion**: Users can delete their own messages; room admins can delete any message.
+- **Read Receipts**: See who has read messages in a room.
 
-### 👥 User Management
+### 👥 User & Room Management
 
-- **User Profiles** - Customizable avatars and usernames
-- **Search Users** - Find users by username or email
-- **Online Status** - Track user availability
-- **Account Management** - Update email and username
+- **User Profiles**: Customizable user profiles with avatars.
+- **User Search**: Find other users by their username or email.
+- **Online Status**: Real-time tracking of user online/offline status.
+- **Room Creation**: Create public or private rooms with custom names, descriptions, and avatars.
+- **Participant Management**: Room admins can add or remove participants from a group chat.
+- **Room Search**: Search for public group chats to join.
+- **Leave Room**: Users can leave rooms. If the last admin leaves, a new admin is automatically assigned.
 
-### 🏠 Room Management
+### 🚀 Performance & Scalability
 
-- **Create Rooms** - Start group chats with descriptions
-- **Room Avatars** - Custom room profile pictures
-- **Participant Management** - Add/remove members (admin only)
-- **Room Search** - Discover and search public rooms
-- **Leave Rooms** - Exit group conversations
-
-### 📊 Additional Features
-
-- **Rate Limiting** - Protection against abuse
-- **CORS Support** - Cross-origin resource sharing
-- **Comprehensive Logging** - Winston-based logging system
-- **API Documentation** - Swagger/OpenAPI integration
-- **Input Validation** - Zod schema validation
+- **Redis Caching**: Caching of frequently accessed data (room details, user profiles, messages) to reduce database load.
+- **Redis Pub/Sub**: Socket.IO Redis adapter for horizontal scaling across multiple server instances.
+- **Optimized Queries**: Use of indexes and optimized Drizzle ORM queries for performance.
+- **Rate Limiting**: `express-rate-limit` to prevent brute-force attacks and API abuse.
 
 ---
 
@@ -79,37 +73,39 @@
 - **Framework**: Express.js 5.x
 - **Language**: TypeScript 5.x
 - **Real-Time**: Socket.IO 4.x
+- **Database ORM**: Drizzle ORM
 
-### Database
+### Database & Caching
 
 - **Primary DB**: PostgreSQL 14+
-- **ORM**: Drizzle ORM
-- **Migrations**: Drizzle Kit
+- **Caching & Pub/Sub**: Redis
 
 ### Authentication & Security
 
-- **JWT**: jsonwebtoken 9.x
-- **Password Hashing**: bcrypt
+- **JWT**: `jsonwebtoken`
+- **Password Hashing**: `bcrypt`
 - **Validation**: Zod
+- **Security Headers**: `helmet`
 
 ### File Management
 
 - **Cloud Storage**: Cloudinary
-- **Local Upload**: Multer
+- **Local Upload**: `multer`
 
 ### Additional Tools
 
-- **Logging**: Winston
-- **API Documentation**: Swagger-JSDoc
-- **CORS**: cors middleware
-- **Rate Limiting**: express-rate-limit
-- **Environment Variables**: dotenv
+- **Logging**: Winston, Morgan
+- **API Documentation**: Swagger-JSDoc, Swagger-UI-Express
+- **Migrations**: Drizzle Kit
+- **Rate Limiting**: `express-rate-limit`
+- **Environment Variables**: `dotenv`
 
 ---
 
 ## 📁 Project Structure
 
 ```
+
 my-chat-app/
 ├── src/
 │   ├── config/              # Configuration files
@@ -135,7 +131,9 @@ my-chat-app/
 │   │   ├── auth.middleware.ts
 │   │   ├── error.middleware.ts
 │   │   ├── multer.middleware.ts
-│   │   └── validator.middleware.ts
+│   │   ├── validator.middleware.ts
+│   │   ├── roomAdmin.middleware.ts
+│   │   └── redisRateLimiter.middleware.ts
 │   ├── socket/              # WebSocket handlers
 │   │   └── index.ts
 │   ├── utils/               # Utility functions
@@ -144,6 +142,8 @@ my-chat-app/
 │   │   ├── asyncHandler.ts
 │   │   ├── cloudinary.ts
 │   │   ├── linkPreview.ts
+│   │   ├── redis.ts
+│   │   ├── cache.ts
 │   │   └── logger.ts
 │   ├── validators/          # Zod validation schemas
 │   │   ├── auth.validator.ts
@@ -170,7 +170,8 @@ my-chat-app/
 
 - Node.js v18 or higher
 - PostgreSQL 14 or higher
-- npm or yarn package manager
+- Redis
+- `npm` or `yarn` package manager
 - Cloudinary account (for file uploads)
 
 ### Step 1: Clone the Repository
@@ -198,14 +199,17 @@ cp .env.example .env
 
 ## 🔧 Environment Variables
 
+Update your `.env` file with the following credentials:
+
 ```env
 # Server Configuration
 PORT=8001
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:3000
 
-# Database
+# Database & Redis
 DATABASE_URL=postgresql://user:password@localhost:5432/chat_app
+REDIS_URL=redis://localhost:6379
 
 # JWT Authentication
 ACCESS_TOKEN_SECRET=your_secure_access_token_secret
@@ -225,8 +229,8 @@ CLOUDINARY_API_SECRET=your_api_secret
 
 ### Step 1: Create PostgreSQL Database
 
-```bash
-createdb chat_app
+```sql
+CREATE DATABASE chat_app;
 ```
 
 ### Step 2: Run Migrations
@@ -247,6 +251,8 @@ npm run db:studio    # Open Drizzle Studio
 ## ▶️ Running the Application
 
 ### Development Mode
+
+This command uses `tsx` for hot-reloading
 
 ```bash
 npm run dev

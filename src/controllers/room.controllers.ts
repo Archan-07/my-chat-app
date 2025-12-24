@@ -181,20 +181,10 @@ const getRoomById = asyncHandler(async (req: Request, res: Response) => {
 const updateRoomDetails = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const { name, description } = req.body;
-  const userId = req.user!.id;
-
-  const roomCheck = await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.id, roomId), eq(rooms.adminId, userId)));
-
-  if (roomCheck.length === 0) {
-    throw new ApiError(403, "Room not found or you are not the admin");
-  }
 
   const [updatedRoom] = await db
     .update(rooms)
-    .set({ name: name, description: description })
+    .set({ name: name, description: description, updatedAt: new Date() })
     .where(eq(rooms.id, roomId))
     .returning();
 
@@ -225,22 +215,20 @@ const updateRoomDetails = asyncHandler(async (req: Request, res: Response) => {
 
 const updateRoomAvatar = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
-  const userId = req.user!.id;
   const avatarLocalPath = req.file?.path;
 
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar is required");
   }
 
-  const roomCheck = await db
+  const [oldRoom] = await db
     .select()
     .from(rooms)
-    .where(and(eq(rooms.id, roomId), eq(rooms.adminId, userId)));
+    .where(eq(rooms.id, roomId));
 
-  if (roomCheck.length === 0) {
-    throw new ApiError(403, "Room not found or you are not the admin");
+  if (!oldRoom) {
+    throw new ApiError(404, "Room not found");
   }
-  const [oldRoom] = roomCheck;
 
   const avatar = await uploadOnCloudinary(avatarLocalPath);
   if (!avatar?.secure_url) {
@@ -249,7 +237,11 @@ const updateRoomAvatar = asyncHandler(async (req: Request, res: Response) => {
 
   const [updatedRoom] = await db
     .update(rooms)
-    .set({ roomAvatar: avatar.secure_url, avatarPublicId: avatar.public_id })
+    .set({
+      roomAvatar: avatar.secure_url,
+      avatarPublicId: avatar.public_id,
+      updatedAt: new Date(),
+    })
     .where(eq(rooms.id, roomId))
     .returning();
 
@@ -286,17 +278,6 @@ const updateRoomAvatar = asyncHandler(async (req: Request, res: Response) => {
 
 const deleteRoom = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
-  const userId = req.user!.id;
-
-  const roomCheck = await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.id, roomId), eq(rooms.adminId, userId)))
-    .limit(1);
-
-  if (roomCheck.length === 0) {
-    throw new ApiError(403, "Room not found or you are not the admin");
-  }
 
   const roomParticipants = await db
     .select({ userId: participants.userId })
@@ -330,18 +311,6 @@ const deleteRoom = asyncHandler(async (req: Request, res: Response) => {
 const addParticipants = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const { userToAdd } = req.body;
-
-  const userId = req.user!.id;
-
-  const roomCheck = await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.id, roomId), eq(rooms.adminId, userId)))
-    .limit(1);
-
-  if (roomCheck.length === 0) {
-    throw new ApiError(403, "Room not found or you are not the admin");
-  }
 
   const existingUser = await db
     .select()
@@ -377,18 +346,6 @@ const addParticipants = asyncHandler(async (req: Request, res: Response) => {
 const removeParticipants = asyncHandler(async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const { userToRemove } = req.body;
-
-  const userId = req.user!.id;
-
-  const roomCheck = await db
-    .select()
-    .from(rooms)
-    .where(and(eq(rooms.id, roomId), eq(rooms.adminId, userId)))
-    .limit(1);
-
-  if (roomCheck.length === 0) {
-    throw new ApiError(403, "Room not found or you are not the admin");
-  }
 
   const existingUser = await db
     .select()
